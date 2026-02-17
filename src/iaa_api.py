@@ -1,5 +1,6 @@
 from typing import Optional, Union, List
-#import cvxpy as cp
+
+# import cvxpy as cp
 import numpy as np
 import torch
 import scipy.stats
@@ -7,17 +8,24 @@ from pyomo.environ import ConcreteModel, Var, Constraint, Objective, minimize, R
 from src.iwmv import *
 from src.ds import *
 
-    
+
 class InterAnnotatorAgreementAPI:
-    def __init__(self, annotations: np.array, optim_norm_p: int = 2, label_distribution: Optional[List[float]] = None,
-                 tolerance: float = -1e-8):
+    def __init__(
+        self,
+        annotations: np.array,
+        optim_norm_p: int = 2,
+        label_distribution: Optional[List[float]] = None,
+        tolerance: float = -1e-8,
+    ):
         assert len(annotations.shape) == 2, "Annotations should have only two dimensions (dataset_size, num_annotators)"
         self._annotations = annotations
         self._optim_norm_p = optim_norm_p
         self._tolerance = tolerance
         self._compute_statistics()
         self._wrapper_compute_label_distribution(label_distribution)
-        self.is_t_matrix_initialized = False  # We initialize the t-matrix only the first time that get_posterior_probability() is called.
+        self.is_t_matrix_initialized = (
+            False  # We initialize the t-matrix only the first time that get_posterior_probability() is called.
+        )
 
     def _wrapper_compute_label_distribution(self, label_distribution: Optional[List[float]]) -> None:
         """
@@ -28,7 +36,7 @@ class InterAnnotatorAgreementAPI:
             label_distribution = self._compute_label_distribution(self._annotations)
         self._label_distribution = label_distribution
         assert (
-                round(sum(self._label_distribution), 4) == 1
+            round(sum(self._label_distribution), 4) == 1
         ), "There is something wrong with your label distribution. It does not sum up to 1."
 
     def _to_one_hot(self, targets: np.array):
@@ -46,10 +54,10 @@ class InterAnnotatorAgreementAPI:
         self._m_matrix = self._M_estimator()
 
         self._optim_second_term = self._compute_optim_second_term(self._d_matrix, self._m_matrix)
-        #self._t_hat = self._optimize_T(self._optim_second_term, self._optim_norm_p, check_status)
+        # self._t_hat = self._optimize_T(self._optim_second_term, self._optim_norm_p, check_status)
         self._t_hat = self.solve_problem(self._optim_second_term, self._optim_norm_p, check_status)
         assert (self._t_hat >= self._tolerance).all(), self._t_hat[self._t_hat < self._tolerance]
-        #assert np.equal(self._t_hat, self._t_hat.T).all(), f"Error: T is not symmetric. T matrix is:\n {self._t_hat.T}"
+        # assert np.equal(self._t_hat, self._t_hat.T).all(), f"Error: T is not symmetric. T matrix is:\n {self._t_hat.T}"
         self._fix_negative_values_t_matrix()
         self.is_t_matrix_initialized = True
 
@@ -85,24 +93,21 @@ class InterAnnotatorAgreementAPI:
                     class_b = self.annotations[i, ann_b]
                     hat_m[class_a, class_b] += 1
                     hat_m[class_b, class_a] += 1
-        hat_m /= (self.num_annotators * (self.num_annotators - 1) * self.num_samples)
+        hat_m /= self.num_annotators * (self.num_annotators - 1) * self.num_samples
         return hat_m
-
 
     def _compute_optim_second_term(self, D: np.array, M_hat: np.array) -> np.array:
         assert D.shape == (self._num_classes, self._num_classes) and M_hat.shape == (
             self._num_classes,
             self._num_classes,
         )
-        app = np.linalg.inv(D ** 0.5)
+        app = np.linalg.inv(D**0.5)
         app = np.dot(app, np.dot(M_hat, app))
         app, U = np.linalg.eig(app)
-        Λ = np.diag(app).astype(complex)  #complex needed to avoid NAN
+        Λ = np.diag(app).astype(complex)  # complex needed to avoid NAN
         inv_U = U.T
-        optim_second_term = np.dot(U, np.dot(Λ ** 0.5, inv_U))
+        optim_second_term = np.dot(U, np.dot(Λ**0.5, inv_U))
         return optim_second_term
-
-
 
     def solve_problem(self, optim_second_term: np.array, norm_p: int, check_status: bool = True):
         model = ConcreteModel()
@@ -114,7 +119,9 @@ class InterAnnotatorAgreementAPI:
         def symmetric_constraint(model, i, j):
             return model.t_hat[i, j] == model.t_hat[j, i]
 
-        model.symmetric_constraint = Constraint(range(self._num_classes), range(self._num_classes), rule=symmetric_constraint)
+        model.symmetric_constraint = Constraint(
+            range(self._num_classes), range(self._num_classes), rule=symmetric_constraint
+        )
 
         # Add constraints
         def row_sum_constraint(model, i):
@@ -128,28 +135,33 @@ class InterAnnotatorAgreementAPI:
             else:
                 return Constraint.Skip
 
-        model.diagonal_constraint = Constraint(range(self._num_classes), range(self._num_classes), rule=diagonal_constraint)
+        model.diagonal_constraint = Constraint(
+            range(self._num_classes), range(self._num_classes), rule=diagonal_constraint
+        )
 
         # Define the objective function
         def objective_rule(model):
-            return sum((model.t_hat[i, j] - optim_second_term[i, j].real) ** norm_p for i in range(self._num_classes) for j in range(self._num_classes))
+            return sum(
+                (model.t_hat[i, j] - optim_second_term[i, j].real) ** norm_p
+                for i in range(self._num_classes)
+                for j in range(self._num_classes)
+            )
 
         model.obj = Objective(rule=objective_rule, sense=minimize)
 
         # Solve the problem
-        solver = SolverFactory('gurobi')
+        solver = SolverFactory("gurobi")
         solver.solve(model)
 
         # Check the solution status
-        if model.obj() is  None:
+        if model.obj() is None:
             print("No optimal solution found.")
         optimal_matrix = np.zeros((self._num_classes, self._num_classes))
         for i in range(self._num_classes):
             for j in range(self._num_classes):
                 optimal_matrix[i, j] = model.t_hat[i, j].value
         return optimal_matrix
-        
-    
+
     def _optimize_T(self, optim_second_term: np.array, norm_p: int, check_status: bool = True):
         """
         This function find the optimal T in the space of the symmetric,
@@ -170,8 +182,8 @@ class InterAnnotatorAgreementAPI:
         # Form and solve problem.
         problem = cp.Problem(objective, constraints)
         problem.solve()  # Returns the optimal value.
-        if problem.status != 'optimal':
-            print(problem.status)    
+        if problem.status != "optimal":
+            print(problem.status)
         if check_status:
             assert problem.status == "optimal", "Error: Your T can't be optimized!"
         return t_hat.value
@@ -183,10 +195,12 @@ class InterAnnotatorAgreementAPI:
         result = np.mean(one_hot, axis=1)
         return result if not return_torch else torch.from_numpy(result)
 
-    def get_posterior_probability(self, return_torch: bool = True, check_status: bool = True) -> Union[np.array, torch.Tensor]:
-        '''
+    def get_posterior_probability(
+        self, return_torch: bool = True, check_status: bool = True
+    ) -> Union[np.array, torch.Tensor]:
+        """
         return a probability distribution as labels with the shape of (number of sample, num of annotators)
-        '''
+        """
         if not self.is_t_matrix_initialized:
             # We initialize the t matrix only the first time that get_posterior_probability() is called.
             self._build_t_matrix(check_status)
@@ -195,7 +209,6 @@ class InterAnnotatorAgreementAPI:
         result = p_c / np.sum(p_c, axis=-1)[:, None]
         assert (result >= 0).all(), "Error: get_posterior_probability() there are negative soft labels."
         return result if not return_torch else torch.from_numpy(result)
-    
 
     def get_random_labels_from_annotations(self, return_torch: bool = True) -> Union[np.array, torch.Tensor]:
         """
@@ -214,7 +227,7 @@ class InterAnnotatorAgreementAPI:
         self._t_hat = t_hat_iwmv
         labels = dict2list(annotations)
         return labels if not return_torch else torch.from_numpy(labels)
-    
+
     def get_dawid_skene_labels_from_annotations(self, return_torch: bool = True) -> Union[np.array, torch.Tensor]:
         """
         For each sample randomly select one of the labels chosen by the annotators.
@@ -223,7 +236,7 @@ class InterAnnotatorAgreementAPI:
         ds = EM(e2wl, w2el, label_set)
         annotations, _, T_matrix = ds.Run(T_required=True)
         self._t_hat = T_matrix
-        annotations = ds.from_z_to_truths_multi(annotations,label_set)
+        annotations = ds.from_z_to_truths_multi(annotations, label_set)
         labels = dict2list(annotations)
         return labels if not return_torch else torch.from_numpy(labels)
 
@@ -249,12 +262,14 @@ class InterAnnotatorAgreementAPI:
         soft_labels = self.get_average_soft_labels(return_torch)
         posterior = self.get_posterior_probability(return_torch)
         if return_torch:
-            result = torch.mean(torch.vstack((soft_labels.unsqueeze(0),posterior.unsqueeze(0))), dim=0)
+            result = torch.mean(torch.vstack((soft_labels.unsqueeze(0), posterior.unsqueeze(0))), dim=0)
         else:
-            result =  np.mean(np.stack((soft_labels, posterior), axis=2), axis=2)
+            result = np.mean(np.stack((soft_labels, posterior), axis=2), axis=2)
         return result
 
-    def return_annotations(self,aggregation_type:str='posterior', return_torch:bool=True) -> Union[np.array, torch.Tensor]:
+    def return_annotations(
+        self, aggregation_type: str = "posterior", return_torch: bool = True
+    ) -> Union[np.array, torch.Tensor]:
         if aggregation_type == "posterior":
             labels = self.get_posterior_probability(return_torch=return_torch)
         elif aggregation_type == "majority":
