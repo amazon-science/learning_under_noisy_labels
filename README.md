@@ -67,3 +67,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ## License
 
 This library is licensed under the Apache 2.0 License.
+
+## Acknowledgments
+
+The implementation of Dawid-Skene and Iterative-Weighted Majority Voting draws from thethe paper [A Lightweight, Effective, and Efficient Model for LabelAggregation in Crowdsourcing](https://github.com/yyang318/LA_onepass). We gratefully acknowledge the authors for making their code available.
