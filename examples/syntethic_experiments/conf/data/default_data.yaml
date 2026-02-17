@@ -1,0 +1,17 @@
+batch_size: 256
+num_workers: 10
+
+
+num_classes: 4
+add_uniform: True
+num_annotators: 5
+num_features: 2
+num_samples: 10000
+min_t_diag_value: 2.0
+leak_distribution: False
+equal_distribution: False
+
+aggregation_type: posterior
+noise_matrix_type: different_diagonal
+
+

@@ -1,0 +1,10 @@
+# Required to make the "experiments" dir the default one for the output of the models
+hydra:
+  run:
+    dir: experiments/${train.experiment_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+defaults:
+  - _self_
+  - train: default_train
+  - model: default_model
+  - data: default_data

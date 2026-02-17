@@ -1,0 +1,33 @@
+# reproducibility
+seed: 42
+
+# model name
+experiment_name: default_name  # used to name the directory in which model's checkpoints will be stored (experiments/model_name/...)
+
+# pl_trainer
+pl_trainer:
+  _target_: pytorch_lightning.Trainer
+  gpus: 1
+  accumulate_grad_batches: 1
+  max_epochs: 100
+  # uncomment the lines below for training with mixed precision
+  # precision: 16
+  # amp_level: O2
+
+# early stopping callback
+# "early_stopping_callback: null" will disable early stopping
+early_stopping_callback:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_loss
+  mode: min
+  patience: 100
+
+# model_checkpoint_callback
+# "model_checkpoint_callback: null" will disable model checkpointing
+model_checkpoint_callback:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  monitor: val_loss
+  mode: min
+  verbose: True
+  save_top_k: 1
+  dirpath: experiments/${train.experiment_name}
